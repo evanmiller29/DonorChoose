@@ -9,13 +9,61 @@ from datetime import datetime
 
 # Reading in data
 
+dtype = {
+    'id': str,
+    'teacher_id': str,
+    'teacher_prefix': str,
+    'school_state': str,
+    'project_submitted_datetime': str,
+    'project_grade_category': str,
+    'project_subject_categories': str,
+    'project_subject_subcategories': str,
+    'project_title': str,
+    'project_essay_1': str,
+    'project_essay_2': str,
+    'project_essay_3': str,
+    'project_essay_4': str,
+    'project_resource_summary': str,
+    'teacher_number_of_previously_posted_projects': int,
+    'project_is_approved': np.uint8,
+}
+
 data_dir = "F:/Nerdy Stuff/Kaggle/DonorsChoose"
 sub_path = "F:/Nerdy Stuff/Kaggle submissions/DonorChoose"
 
-train = pd.read_csv(os.path.join(data_dir, "data/train.csv"))
-res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
-test = pd.read_csv(os.path.join(data_dir, "data/test.csv"))
+train = pd.read_csv(os.path.join(data_dir, "data/train.csv"), dtype=dtype)
+test = pd.read_csv(os.path.join(data_dir, "data/test.csv"), dtype=dtype)
+
 sample_sub = pd.read_csv(os.path.join("data/sample_submission.csv"))
+res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
+
+id_test = test['id'].values
+
+# Rolling up resources to one row per application
+
+res = pd.DataFrame(res[['id', 'quantity', 'price']].groupby('id').agg(
+    {
+        'quantity': [
+            'sum',
+            'min',
+            'max',
+            'mean',
+            'std',
+        ],
+        'price': [
+            'count',
+            'sum',
+            'min',
+            'max',
+            'mean',
+            'std',
+            lambda x: len(np.unique(x)),
+        ]}
+    )).reset_index()
+
+res.columns = ['_'.join(col) for col in res.columns]
+res.rename(columns={'id_': 'id'}, inplace=True)
+res['mean_price'] = res['price_sum']/res['quantity_sum']
 
 print("Train has %s rows and %s cols" % (train.shape[0], train.shape[1]))
 print("Test has %s rows and %s cols" % (test.shape[0], test.shape[1]))
@@ -29,41 +77,15 @@ test = pd.merge(left=test, right=res, on="id", how="left")
 print("Train after merge has %s rows and %s cols" % (train.shape[0], train.shape[1]))
 print("Test after merge has %s rows and %s cols" % (test.shape[0], test.shape[1]))
 
-# Removing duplicates - shouldn't need this
-
-id_test = test['id'].unique()
-
-train['item_cost'] = train['price'] * train['quantity']
-test['item_cost'] = test['price'] * test['quantity']
-
-def my_agg(x):
-
-    names = {
-        'total_cost': x['item_cost'].sum(),
-        'total_qty': x['quantity'].sum(),
-        'num_items': x['quantity'].count(),
-        'avg_price': x['price'].mean()
-
-    }
-
-    return pd.Series(names, index=['total_cost', 'total_qty',
-                                   'num_items', 'avg_price'])
-
-
-train_group = train.groupby(['id', 'project_is_approved']).apply(my_agg)
-test_group = test.groupby('id').apply(my_agg)
-
-train = train_group.reset_index()
-test = test_group.reset_index()
-
-print("Train after dropping dupes has %s rows and %s cols" % (train.shape[0], train.shape[1]))
-print("Test after dropping dupes has %s rows and %s cols" % (test.shape[0], test.shape[1]))
-
 # First iteration of modelling
 
-X_tr = train.drop(['id', 'project_is_approved'], axis=1)
+cols = ['price_count', 'price_sum', 'price_min',
+        'price_max', 'price_mean', 'price_std',
+        'price_<lambda>', 'quantity_sum', 'quantity_min']
+
+X_tr = train[cols]
 y_tr = train['project_is_approved'].values
-X_tst = test.drop('id', axis=1)
+X_tst = test[cols]
 
 fold_scores = []
 skf = StratifiedKFold(n_splits=10)
@@ -108,3 +130,4 @@ file_name = '_'.join(file_name_list) + ".csv"
 
 sub.to_csv(os.path.join(sub_path, file_name), index=False)
 
+print("Completed outputting to folder")
