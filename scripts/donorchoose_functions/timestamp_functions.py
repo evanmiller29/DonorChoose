@@ -1,4 +1,4 @@
-def process_timestamp(df):
+def extract_timestamp_features(df):
 
     """
 

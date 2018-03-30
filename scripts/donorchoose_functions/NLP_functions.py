@@ -23,3 +23,22 @@ def extract_text_features(df):
     df['project_resource_summary_wc'] = df['project_resource_summary'].apply(lambda x: len(str(x).split(' ')))
 
     return df
+
+
+def join_essays(df):
+
+    """
+
+    :param df: Dataframe that holds all the essays
+    :return: A series that includes all the essays joined into one
+    """
+
+    essay = df.apply(lambda x: ' '.join([
+    str(x['project_essay_1']),
+    str(x['project_essay_2']),
+    str(x['project_essay_3']),
+    str(x['project_essay_4']),
+    ]), axis=1)
+
+    return essay
+

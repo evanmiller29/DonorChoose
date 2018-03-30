@@ -1,3 +1,5 @@
+# Heavily influenced by: https://www.kaggle.com/opanichev/lightgbm-and-tf-idf-starter?login=true#
+
 import pandas as pd
 import lightgbm as lgbm
 import numpy as np
@@ -7,7 +9,11 @@ import re
 
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
+from sklearn.preprocessing import LabelEncoder
+
 from datetime import datetime
+
+from tqdm import tqdm
 
 # Reading in data
 
@@ -43,8 +49,23 @@ test = fn.extract_text_features(test)
 
 print("Extracting datetime features")
 
-train = fn.process_timestamp(train)
-test = fn.process_timestamp(test)
+train = fn.extract_timestamp_features(train)
+test = fn.extract_timestamp_features(test)
+
+print("Joining together essays")
+
+train['project_essay'] = fn.join_essays(train)
+test['project_essay'] = fn.join_essays(test)
+
+train = train.drop([
+    'project_essay_1', 'project_essay_2',
+     'project_essay_3', 'project_essay_4'
+    ], axis=1)
+
+test = test.drop([
+    'project_essay_1', 'project_essay_2',
+     'project_essay_3', 'project_essay_4'
+    ], axis=1)
 
 sample_sub = pd.read_csv(os.path.join("data/sample_submission.csv"))
 res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
@@ -73,11 +94,47 @@ test = pd.merge(left=test, right=res, on="id", how="left")
 print("Train after merge has %s rows and %s cols" % (train.shape[0], train.shape[1]))
 print("Test after merge has %s rows and %s cols" % (test.shape[0], test.shape[1]))
 
-# First iteration of modelling
+print("Concatenating datasets so I can build the label encoders")
+
+df_all = pd.concat([train, test], axis=0)
+
+# TF-IDF and label encoding - will take first iteration from kaggle script and then move to sklearn pipelines?
+# Renaming these cols to include later on
+
+print('Label Encoder...')
+
+col_rename = {
+    'teacher_id': 'enc_teacher_id',
+    'teacher_prefix': 'enc_teacher_prefix',
+    'school_state': 'enc_school_state',
+    'project_grade_category': 'enc_project_grade_category',
+    'project_subject_categories': 'enc_project_subject_categories',
+    'project_subject_subcategories': 'enc_project_subject_subcategories' # Can refactor to be more elegant
+
+}
+
+train = train.rename(columns=col_rename)
+test = test.rename(columns=col_rename)
+df_all = df_all.rename(columns=col_rename)
+
+r = re.compile("enc_")
+
+filtered = filter(r.match, train.columns)
+cols = [i for i in filtered]
+
+for c in tqdm(cols):
+    le = LabelEncoder()
+    le.fit(df_all[c].astype(str))
+    train[c] = le.transform(train[c].astype(str))
+    test[c] = le.transform(test[c].astype(str))
+del le
+
+print("Modelling")
 
 cols = train.columns
 
-variables_names_to_include = ['price', 'quantity', '_wc', '_len', 'subtime_']
+variables_names_to_include = ['price', 'quantity', '_wc',
+                              '_len', 'subtime_', 'enc_']
 vars_to_include = []
 
 for variable in variables_names_to_include:
