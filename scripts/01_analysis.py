@@ -2,6 +2,8 @@ import pandas as pd
 import lightgbm as lgbm
 import numpy as np
 import os
+import scripts.donorchoose_functions as fn
+import re
 
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
@@ -33,6 +35,9 @@ sub_path = "F:/Nerdy Stuff/Kaggle submissions/DonorChoose"
 
 train = pd.read_csv(os.path.join(data_dir, "data/train.csv"), dtype=dtype)
 test = pd.read_csv(os.path.join(data_dir, "data/test.csv"), dtype=dtype)
+
+train = fn.extract_text_features(train)
+test = fn.extract_text_features(test)
 
 sample_sub = pd.read_csv(os.path.join("data/sample_submission.csv"))
 res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
@@ -79,13 +84,26 @@ print("Test after merge has %s rows and %s cols" % (test.shape[0], test.shape[1]
 
 # First iteration of modelling
 
-cols = ['price_count', 'price_sum', 'price_min',
-        'price_max', 'price_mean', 'price_std',
-        'price_<lambda>', 'quantity_sum', 'quantity_min']
+cols = train.columns
 
-X_tr = train[cols]
+variables_names_to_include = ['price', 'quantity', '_wc', '_len']
+vars_to_include = []
+
+for variable in variables_names_to_include:
+
+    regex = ".*" + variable + "*."
+    print(regex)
+    r = re.compile(regex)
+
+    filtered = filter(r.match, cols)
+    result = [i for i in filtered]
+
+    for res in result:
+        vars_to_include.append(res)
+
+X_tr = train[vars_to_include]
 y_tr = train['project_is_approved'].values
-X_tst = test[cols]
+X_tst = test[vars_to_include]
 
 fold_scores = []
 skf = StratifiedKFold(n_splits=10)
