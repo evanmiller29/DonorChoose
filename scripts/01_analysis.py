@@ -46,28 +46,10 @@ id_test = test['id'].values
 
 # Rolling up resources to one row per application
 
-res = pd.DataFrame(res[['id', 'quantity', 'price']].groupby('id').agg(
-    {
-        'quantity': [
-            'sum',
-            'min',
-            'max',
-            'mean',
-            'std',
-        ],
-        'price': [
-            'count',
-            'sum',
-            'min',
-            'max',
-            'mean',
-            'std',
-            lambda x: len(np.unique(x)),
-        ]}
-    )).reset_index()
+res = (res
+        .groupby('id').apply(fn.price_quantity_agg)
+        .reset_index())
 
-res.columns = ['_'.join(col) for col in res.columns]
-res.rename(columns={'id_': 'id'}, inplace=True)
 res['mean_price'] = res['price_sum']/res['quantity_sum']
 
 print("Train has %s rows and %s cols" % (train.shape[0], train.shape[1]))
