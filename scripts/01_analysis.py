@@ -36,8 +36,15 @@ sub_path = "F:/Nerdy Stuff/Kaggle submissions/DonorChoose"
 train = pd.read_csv(os.path.join(data_dir, "data/train.csv"), dtype=dtype)
 test = pd.read_csv(os.path.join(data_dir, "data/test.csv"), dtype=dtype)
 
+print("Extracting text features")
+
 train = fn.extract_text_features(train)
 test = fn.extract_text_features(test)
+
+print("Extracting datetime features")
+
+train = fn.process_timestamp(train)
+test = fn.process_timestamp(test)
 
 sample_sub = pd.read_csv(os.path.join("data/sample_submission.csv"))
 res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
@@ -45,6 +52,8 @@ res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
 id_test = test['id'].values
 
 # Rolling up resources to one row per application
+
+print("Rolling up resource requirements to one line and creating aggregate feats")
 
 res = (res
         .groupby('id').apply(fn.price_quantity_agg)
@@ -68,7 +77,7 @@ print("Test after merge has %s rows and %s cols" % (test.shape[0], test.shape[1]
 
 cols = train.columns
 
-variables_names_to_include = ['price', 'quantity', '_wc', '_len']
+variables_names_to_include = ['price', 'quantity', '_wc', '_len', 'subtime_']
 vars_to_include = []
 
 for variable in variables_names_to_include:
