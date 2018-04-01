@@ -14,15 +14,15 @@ class DateEncoder(TransformerMixin):
                           dt.hour, dt.minute], axis=1)
 
 
-dates_df = pd.DataFrame(
-         {'dates': pd.date_range('2015-10-30 10:30', '2015-11-02 10:30'),
-          'index': [1, 2, 3, 4]})
-
- mapper_dates = DataFrameMapper([
-     ('dates', DateEncoder()),
-     ('index', None)
-     ], input_df=True)
-print(mapper_dates.fit_transform(dates_df))
+# dates_df = pd.DataFrame(
+#          {'dates': pd.date_range('2015-10-30 10:30', '2015-11-02 10:30'),
+#           'index': [1, 2, 3, 4]})
+#
+#  mapper_dates = DataFrameMapper([
+#      ('dates', DateEncoder()),
+#      ('index', None)
+#      ], input_df=True)
+# print(mapper_dates.fit_transform(dates_df))
 
 class TextSummaryStatEncoder(TransformerMixin):
 

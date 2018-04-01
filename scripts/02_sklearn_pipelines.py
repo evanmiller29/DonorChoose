@@ -46,58 +46,13 @@ train = pd.read_csv(os.path.join(data_dir, "data/train.csv"),
 test = pd.read_csv(os.path.join(data_dir, "data/test.csv"),
                    dtype=dtype, parse_dates=['project_submitted_datetime'])
 
-print("Extracting text features")
-
-mapper_dates = DataFrameMapper([
-     ('project_submitted_datetime', fn.DateEncoder()),
-     (col_list, None)
-     ], input_df=True)
-
-
-train = fn.extract_text_features(train)
-test = fn.extract_text_features(test)
-
-print("Extracting datetime features")
-
-columns = train.columns
-essay_cols = ['project_essay_1', 'project_essay_2', 'project_essay_3',
-              'project_essay_4', 'project_resource_summary']
-transform_cols = ['project_submitted_datetime'] + essay_cols
-
-no_transform_cols = [col for col in columns if col not in transform_cols]
-
-mapper_dates = DataFrameMapper([
-     ('project_submitted_datetime', fn.DateEncoder()),
-     (no_transform_cols, None)
-     ], input_df=True)
-
-print("Testing the output of the function")
-print(mapper_dates.fit_transform(train)[0, :])
-
-train = fn.extract_timestamp_features(train)
-test = fn.extract_timestamp_features(test)
-
-print("Joining together essays")
-
 train['project_essay'] = fn.join_essays(train)
 test['project_essay'] = fn.join_essays(test)
-
-train = train.drop([
-    'project_essay_1', 'project_essay_2',
-     'project_essay_3', 'project_essay_4'
-    ], axis=1)
-
-test = test.drop([
-    'project_essay_1', 'project_essay_2',
-     'project_essay_3', 'project_essay_4'
-    ], axis=1)
 
 sample_sub = pd.read_csv(os.path.join("data/sample_submission.csv"))
 res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
 
 id_test = test['id'].values
-
-# Rolling up resources to one row per application
 
 print("Rolling up resource requirements to one line and creating aggregate feats")
 
@@ -119,64 +74,65 @@ test = pd.merge(left=test, right=res, on="id", how="left")
 print("Train after merge has %s rows and %s cols" % (train.shape[0], train.shape[1]))
 print("Test after merge has %s rows and %s cols" % (test.shape[0], test.shape[1]))
 
+print("Extracting text features")
+print("Extracting datetime features")
+
+y_train = train['project_is_approved']
+X_train = train.drop('project_is_approved', axis=1)
+
+columns = X_train.columns
+
+essay_cols = ['project_essay_1', 'project_essay_2', 'project_essay_3',
+              'project_essay_4', 'project_resource_summary']
+
+text_labels = ['teacher_id', 'teacher_prefix',
+               'school_state','project_grade_category',
+               'project_subject_categories','project_subject_subcategories']
+
+transform_cols = ['project_submitted_datetime'] + essay_cols + text_labels
+
+no_transform_cols = [col for col in columns if col not in transform_cols]
+
+# Recoding missing values in teacher_prefix
+# train['teacher_prefix'].value_counts()
+
+train['teacher_prefix'] = train['teacher_prefix'].fillna('Unknown')
+test['teacher_prefix'] = test['teacher_prefix'].fillna('Unknown')
+
 print("Concatenating datasets so I can build the label encoders")
 
 df_all = pd.concat([train, test], axis=0)
+
+for c in tqdm(text_labels):
+
+    train[c] = train[c].astype(str)
+    test[c] = test[c].astype(str)
+
+feature_engineering_mapper = DataFrameMapper([
+
+     ('project_submitted_datetime', fn.DateEncoder()),
+     ('project_essay_2', fn.TextSummaryStatEncoder()),
+     ('project_essay_3', fn.TextSummaryStatEncoder()),
+     ('project_essay_4', fn.TextSummaryStatEncoder()),
+     ('project_resource_summary', fn.TextSummaryStatEncoder()),
+     ('teacher_id', LabelEncoder()),
+     ('teacher_prefix', LabelEncoder()),
+     ('school_state', LabelEncoder()),
+     ('project_grade_category', LabelEncoder()),
+     ('project_subject_categories', LabelEncoder()),
+     ('project_subject_subcategories', LabelEncoder()),
+     (no_transform_cols, None)
+     ], input_df=True)
+
+feature_engineering_mapper.fit(df_all)
+
+X_train = feature_engineering_mapper.transform(X_train)
+X_test = feature_engineering_mapper.transform(test)
 
 # TF-IDF and label encoding - will take first iteration from kaggle script and then move to sklearn pipelines?
 # Renaming these cols to include later on
 
 print('Label Encoder...')
-
-col_rename = {
-    'teacher_id': 'enc_teacher_id',
-    'teacher_prefix': 'enc_teacher_prefix',
-    'school_state': 'enc_school_state',
-    'project_grade_category': 'enc_project_grade_category',
-    'project_subject_categories': 'enc_project_subject_categories',
-    'project_subject_subcategories': 'enc_project_subject_subcategories' # Can refactor to be more elegant
-
-}
-
-train = train.rename(columns=col_rename)
-test = test.rename(columns=col_rename)
-df_all = df_all.rename(columns=col_rename)
-
-r = re.compile("enc_")
-
-filtered = filter(r.match, train.columns)
-cols = [i for i in filtered]
-
-for c in tqdm(cols):
-    le = LabelEncoder()
-    le.fit(df_all[c].astype(str))
-    train[c] = le.transform(train[c].astype(str))
-    test[c] = le.transform(test[c].astype(str))
-del le
-
-print("Modelling")
-
-cols = train.columns
-
-variables_names_to_include = ['price', 'quantity', '_wc',
-                              '_len', 'subtime_', 'enc_']
-vars_to_include = []
-
-for variable in variables_names_to_include:
-
-    regex = ".*" + variable + "*."
-    print(regex)
-    r = re.compile(regex)
-
-    filtered = filter(r.match, cols)
-    result = [i for i in filtered]
-
-    for res in result:
-        vars_to_include.append(res)
-
-X_tr = train[vars_to_include]
-y_tr = train['project_is_approved'].values
-X_tst = test[vars_to_include]
 
 fold_scores = []
 skf = StratifiedKFold(n_splits=10)
