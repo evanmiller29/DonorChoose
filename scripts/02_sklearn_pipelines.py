@@ -43,29 +43,36 @@ dtype = {
 data_dir = "F:/Nerdy Stuff/Kaggle/DonorsChoose"
 sub_path = "F:/Nerdy Stuff/Kaggle submissions/DonorChoose"
 
+full_run = False
+
 train = pd.read_csv(os.path.join(data_dir, "data/train.csv"),
                     dtype=dtype, parse_dates=['project_submitted_datetime'])
 test = pd.read_csv(os.path.join(data_dir, "data/test.csv"),
                    dtype=dtype, parse_dates=['project_submitted_datetime'])
 
-train = train.iloc[0:100, :]
-test= test.iloc[0:100, :]
-
 train['project_essay'] = fn.join_essays(train)
 test['project_essay'] = fn.join_essays(test)
 
 sample_sub = pd.read_csv(os.path.join("data/sample_submission.csv"))
-res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
 
 id_test = test['id'].values
 
 print("Rolling up resource requirements to one line and creating aggregate feats")
 
-res = (res
-        .groupby('id').apply(fn.price_quantity_agg)
-        .reset_index())
+if full_run:
 
-res['mean_price'] = res['price_sum']/res['quantity_sum']
+    res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
+
+    res = (res
+            .groupby('id').apply(fn.price_quantity_agg)
+            .reset_index())
+
+    res['mean_price'] = res['price_sum'] / res['quantity_sum']
+    res.to_csv(os.path.join(data_dir, 'data/resource_agg.csv'), index=False)
+
+else:
+
+    res = pd.read_csv(os.path.join(data_dir, 'data/resource_agg.csv'))
 
 print("Train has %s rows and %s cols" % (train.shape[0], train.shape[1]))
 print("Test has %s rows and %s cols" % (test.shape[0], test.shape[1]))
@@ -76,52 +83,59 @@ print("Train has %s more rows than test" % (train.shape[0] / test.shape[0]))
 train = pd.merge(left=train, right=res, on="id", how="left")
 test = pd.merge(left=test, right=res, on="id", how="left")
 
-print("Train after merge has %s rows and %s cols" % (train.shape[0], train.shape[1]))
-print("Test after merge has %s rows and %s cols" % (test.shape[0], test.shape[1]))
-
-print("Extracting text features")
-print("Extracting datetime features")
-
 print("Recoding missing values in teacher_prefix")
 
 train['teacher_prefix'] = train['teacher_prefix'].fillna('Unknown')
 test['teacher_prefix'] = test['teacher_prefix'].fillna('Unknown')
 
-test['project_is_approved'] = 0
-
 essay_cols = ['project_essay_1', 'project_essay_2', 'project_essay_3',
               'project_essay_4', 'project_resource_summary']
 
-text_labels = ['teacher_id', 'teacher_prefix',
-               'school_state','project_grade_category',
-               'project_subject_categories','project_subject_subcategories']
+text_labels = ['teacher_id', 'teacher_prefix', 'school_state',
+               'project_grade_category', 'project_subject_categories',
+               'project_subject_subcategories']
 
 transform_cols = ['project_submitted_datetime'] + essay_cols + text_labels
 
 print("Concatenating datasets so I can build the label encoders")
-
-df_all = pd.concat([train, test], axis=0)
 
 for c in tqdm(text_labels):
 
     train[c] = train[c].astype(str)
     test[c] = test[c].astype(str)
 
+df_all = pd.concat([train, test], axis=0)
+
 print("Doing TFIDF")
 
-essay_cols_nlp = ['project_title', 'project_essay', 'project_resource_summary', 'description']
-n_features = [400,4040,400, 40]
+essay_cols_nlp = ['project_title', 'project_essay', 'project_resource_summary']
+# n_features = [400,4040,400, 40]
 
-for c_i, c in tqdm(enumerate(essay_cols_nlp)):
-    tfidf = TfidfVectorizer(max_features=n_features[c_i],norm='l2',)
+n_features = [100,1000,100]
+file_name = '_'.join(str(x) for x in n_features)
 
-    tfidf.fit(df_all[c])
-    tfidf_train = np.array(tfidf.transform(train[c]).toarray(), dtype=np.float16)
-    tfidf_test = np.array(tfidf.transform(test[c]).toarray(), dtype=np.float16)
+if full_run:
 
-    for i in range(n_features[c_i]):
-        train[c + '_tfidf_' + str(i)] = tfidf_train[:, i]
-        test[c + '_tfidf_' + str(i)] = tfidf_test[:, i]
+    for c_i, c in tqdm(enumerate(essay_cols_nlp)):
+        tfidf = TfidfVectorizer(max_features=n_features[c_i],norm='l2',)
+
+        tfidf.fit(df_all[c])
+        tfidf_train = np.array(tfidf.transform(train[c]).toarray(), dtype=np.float16)
+        tfidf_test = np.array(tfidf.transform(test[c]).toarray(), dtype=np.float16)
+
+        for i in range(n_features[c_i]):
+            train[c + '_tfidf_' + str(i)] = tfidf_train[:, i]
+            test[c + '_tfidf_' + str(i)] = tfidf_test[:, i]
+
+        train.to_csv(os.path.join(data_dir, 'data/train_tfidf_' + file_name + '.csv'), index=False)
+        test.to_csv(os.path.join(data_dir, 'data/test_tfidf_' + file_name + '.csv'), index=False)
+
+else:
+
+    train = pd.read_csv(os.path.join(data_dir, 'data/train_tfidf_' + file_name + '.csv'),
+                        parse_dates=['project_submitted_datetime'], low_memory=True)
+    test = pd.read_csv(os.path.join(data_dir, 'data/test_tfidf_' + file_name + '.csv'),
+                       parse_dates=['project_submitted_datetime'], low_memory=True)
 
 print("Dropping TF-IDF cols after extracting information..")
 
@@ -129,8 +143,6 @@ train = train.drop(essay_cols_nlp, axis=1)
 test = test.drop(essay_cols_nlp, axis=1)
 
 print("Saving id and then dropping")
-
-test_id = test['id']
 
 y_train = train['project_is_approved'].values
 X_train = train.drop('project_is_approved', axis=1)
@@ -159,13 +171,17 @@ feature_engineering_mapper = DataFrameMapper([
      (no_transform_cols, None)
      ], input_df=True)
 
+print("Fitting the pipeline")
+
 feature_engineering_mapper.fit(df_all)
+
+print("Transforming train and test sets")
 
 X_train = feature_engineering_mapper.transform(X_train)
 test = feature_engineering_mapper.transform(test)
 
 fold_scores = []
-skf = StratifiedKFold(n_splits=10, random_state=1234)
+skf = StratifiedKFold(n_splits=5, random_state=1234)
 
 clf = lgbm.LGBMClassifier()
 
@@ -187,8 +203,8 @@ std_score = round(np.std(fold_scores), 3)
 
 print('AUC = {:.3f} +/- {:.3f}'.format(mean_score, std_score))
 
-clf.fit(X_tr, y_tr)
-predictions = clf.predict_proba(X_test)[:, 1]
+clf.fit(X_train, y_train)
+predictions = clf.predict_proba(test)[:, 1]
 
 # Submitting to F:/
 
