@@ -11,6 +11,9 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from sklearn.feature_selection import SelectKBest, chi2
+from sklearn.pipeline import Pipeline
+
 from sklearn_pandas import DataFrameMapper
 
 from datetime import datetime
@@ -109,9 +112,10 @@ df_all = pd.concat([train, test], axis=0)
 print("Doing TFIDF")
 
 essay_cols_nlp = ['project_title', 'project_essay', 'project_resource_summary']
+# n_features = [100,1000,100]
 # n_features = [400,4040,400, 40]
 
-n_features = [100,1000,100]
+n_features = [400,4000,400]
 file_name = '_'.join(str(x) for x in n_features)
 
 if full_run:
@@ -127,8 +131,12 @@ if full_run:
             train[c + '_tfidf_' + str(i)] = tfidf_train[:, i]
             test[c + '_tfidf_' + str(i)] = tfidf_test[:, i]
 
-        train.to_csv(os.path.join(data_dir, 'data/train_tfidf_' + file_name + '.csv'), index=False)
-        test.to_csv(os.path.join(data_dir, 'data/test_tfidf_' + file_name + '.csv'), index=False)
+        print("Outputting TF-IDF csvs..")
+
+    # train.to_csv(os.path.join(data_dir, 'data/train_tfidf_' + file_name + '.csv'), index=False)
+    test.to_csv(os.path.join(data_dir, 'data/test_tfidf_' + file_name + '.csv'), index=False)
+
+    print("Successfully outputted")
 
 else:
 
@@ -183,7 +191,20 @@ test = feature_engineering_mapper.transform(test)
 fold_scores = []
 skf = StratifiedKFold(n_splits=5, random_state=1234)
 
-clf = lgbm.LGBMClassifier()
+clf = Pipeline([
+    ()
+  ('feature_selection', SelectKBest(chi2, k=200)),
+  ('classification', lgbm.LGBMClassifier())
+])
+
+print(X_train.shape)
+print(y_train.shape)
+
+y_train = y_train[~np.isnan(X_train).any(axis=1)]
+X_train = X_train[~np.isnan(X_train).any(axis=1)]
+
+print(X_train.shape)
+print(y_train.shape)
 
 for i, (train_idx, valid_idx) in enumerate(skf.split(X_train, y_train)):
 
