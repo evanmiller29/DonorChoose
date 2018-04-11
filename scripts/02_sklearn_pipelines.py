@@ -10,7 +10,10 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import MinMaxScaler
 
+
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectKBest, chi2
 from sklearn.pipeline import Pipeline
 
@@ -46,7 +49,10 @@ dtype = {
 data_dir = "F:/Nerdy Stuff/Kaggle/DonorsChoose"
 sub_path = "F:/Nerdy Stuff/Kaggle submissions/DonorChoose"
 
-full_run = False
+# Creating vars that determine what will be run and what won't
+
+res_rollup = True
+tfidf = True
 
 train = pd.read_csv(os.path.join(data_dir, "data/train.csv"),
                     dtype=dtype, parse_dates=['project_submitted_datetime'])
@@ -62,7 +68,7 @@ id_test = test['id'].values
 
 print("Rolling up resource requirements to one line and creating aggregate feats")
 
-if full_run:
+if res_rollup:
 
     res = pd.read_csv(os.path.join(data_dir, "data/resources.csv"))
 
@@ -112,16 +118,16 @@ df_all = pd.concat([train, test], axis=0)
 print("Doing TFIDF")
 
 essay_cols_nlp = ['project_title', 'project_essay', 'project_resource_summary']
-# n_features = [100,1000,100]
-# n_features = [400,4040,400, 40]
 
 n_features = [400,4000,400]
 file_name = '_'.join(str(x) for x in n_features)
 
-if full_run:
+if tfidf:
 
     for c_i, c in tqdm(enumerate(essay_cols_nlp)):
-        tfidf = TfidfVectorizer(max_features=n_features[c_i],norm='l2',)
+        tfidf = TfidfVectorizer(max_features=n_features[c_i],
+                                norm='l2',
+                                decode_error='replace')
 
         tfidf.fit(df_all[c])
         tfidf_train = np.array(tfidf.transform(train[c]).toarray(), dtype=np.float16)
@@ -131,10 +137,6 @@ if full_run:
             train[c + '_tfidf_' + str(i)] = tfidf_train[:, i]
             test[c + '_tfidf_' + str(i)] = tfidf_test[:, i]
 
-        print("Outputting TF-IDF csvs..")
-
-    # train.to_csv(os.path.join(data_dir, 'data/train_tfidf_' + file_name + '.csv'), index=False)
-    test.to_csv(os.path.join(data_dir, 'data/test_tfidf_' + file_name + '.csv'), index=False)
 
     print("Successfully outputted")
 
@@ -189,57 +191,76 @@ X_train = feature_engineering_mapper.transform(X_train)
 test = feature_engineering_mapper.transform(test)
 
 fold_scores = []
-skf = StratifiedKFold(n_splits=5, random_state=1234)
+skf = StratifiedKFold(n_splits=10, random_state=1234)
 
-clf = Pipeline([
-    ()
-  ('feature_selection', SelectKBest(chi2, k=200)),
-  ('classification', lgbm.LGBMClassifier())
+params = {
+    'boosting_type': 'gbdt',
+    'objective': 'binary',
+    'metric': 'auc',
+    'max_depth': 14,
+    'num_leaves': 31,
+    'learning_rate': 0.025,
+    'feature_fraction': 0.85,
+    'bagging_fraction': 0.85,
+    'bagging_freq': 5,
+    'verbose': 0,
+    'num_threads': 1,
+    'lambda_l2': 1.0,
+    'min_gain_to_split': 0,
+}
+
+lgbm_pipe = Pipeline([
+    ('scaler', MinMaxScaler()),
+    ('feature_selection', SelectKBest(chi2, k=1000)),
+    ('classification', lgbm.LGBMClassifier(**params))
 ])
 
-print(X_train.shape)
-print(y_train.shape)
+rf_pipe = Pipeline([
+    ('scaler', MinMaxScaler()),
+    ('feature_selection', SelectKBest(chi2, k=1000)),
+    ('classification', RandomForestClassifier(n_estimators=500))
+])
 
-y_train = y_train[~np.isnan(X_train).any(axis=1)]
-X_train = X_train[~np.isnan(X_train).any(axis=1)]
+pipes = [lgbm_pipe, rf_pipe]
 
-print(X_train.shape)
-print(y_train.shape)
+for pipe in pipes:
 
-for i, (train_idx, valid_idx) in enumerate(skf.split(X_train, y_train)):
+    clf = pipe
 
-    print("Fold #%s" % (i + 1))
+    for i, (train_idx, valid_idx) in enumerate(skf.split(X_train, y_train)):
 
-    X_tr, X_valid = X_train[train_idx, :], X_train[valid_idx, :]
-    y_tr, y_valid = y_train[train_idx], y_train[valid_idx]
+        print("Fold #%s" % (i + 1))
 
-    clf.fit(X_tr, y_tr)
-    y_valid_predictions = clf.predict_proba(X_valid)[:, 1]
+        X_tr, X_valid = X_train[train_idx, :], X_train[valid_idx, :]
+        y_tr, y_valid = y_train[train_idx], y_train[valid_idx]
 
-    auc_roc_score = roc_auc_score(y_valid, y_valid_predictions)
-    fold_scores.append(auc_roc_score)
+        clf.fit(X_tr, y_tr)
+        y_valid_predictions = clf.predict_proba(X_valid)[:, 1]
 
-mean_score = round(np.mean(fold_scores), 3)
-std_score = round(np.std(fold_scores), 3)
+        auc_roc_score = roc_auc_score(y_valid, y_valid_predictions)
+        fold_scores.append(auc_roc_score)
 
-print('AUC = {:.3f} +/- {:.3f}'.format(mean_score, std_score))
+    mean_score = round(np.mean(fold_scores), 3)
+    std_score = round(np.std(fold_scores), 3)
 
-clf.fit(X_train, y_train)
-predictions = clf.predict_proba(test)[:, 1]
+    print('AUC = {:.3f} +/- {:.3f}'.format(mean_score, std_score))
 
-# Submitting to F:/
+    clf.fit(X_train, y_train)
+    predictions = clf.predict_proba(test)[:, 1]
 
-pred_set = pd.DataFrame()
-pred_set['id'] = id_test
-pred_set['project_is_approved'] = predictions
+    # Submitting to F:/
 
-sub = sample_sub.drop('project_is_approved', axis=1)
-sub = pd.merge(sub, pred_set, on='id', how='left')
+    pred_set = pd.DataFrame()
+    pred_set['id'] = id_test
+    pred_set['project_is_approved'] = predictions
 
-now = datetime.strftime(datetime.now(), "%d_%m_%y_%H%M")
-file_name_list = [now, str(mean_score), str(std_score)]
-file_name = '_'.join(file_name_list) + ".csv"
+    sub = sample_sub.drop('project_is_approved', axis=1)
+    sub = pd.merge(sub, pred_set, on='id', how='left')
 
-sub.to_csv(os.path.join(sub_path, file_name), index=False)
+    now = datetime.strftime(datetime.now(), "%d_%m_%y_%H%M")
+    file_name_list = [now, str(mean_score), str(std_score)]
+    file_name = '_'.join(file_name_list) + ".csv"
 
-print("Completed outputting to folder")
+    sub.to_csv(os.path.join(sub_path, file_name), index=False)
+
+    print("Completed outputting to folder")
