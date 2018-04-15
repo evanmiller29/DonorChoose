@@ -20,10 +20,11 @@ def price_quantity_agg(x):
         'quantity_min': x['quantity'].min(),
         'quantity_max': x['quantity'].max(),
         'quantity_mean': x['quantity'].mean(),
+        'description_ttl': ', '.join(x['description'].astype(str))
 
         }
 
     return pd.Series(names, index=['price_count','price_sum','price_min',
                                    'price_max','price_range','price_mean',
                                    'price_unique','quantity_sum','quantity_min',
-                                   'quantity_max','quantity_mean'])
+                                   'quantity_max','quantity_mean', 'description_ttl'])

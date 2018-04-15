@@ -42,3 +42,30 @@ def join_essays(df):
 
     return essay
 
+
+def remove_stops_punct_stemmer(essay):
+
+    """
+
+    :param essay: Essay for stemming and removing stop words
+    :return: A cleaned and stemmed essay
+    """
+
+    from nltk.corpus import stopwords
+    from string import punctuation
+    from nltk.stem import PorterStemmer
+
+    porter = PorterStemmer()
+
+    stopwords_en = set(stopwords.words('english'))
+    stopwords_en_withpunct = stopwords_en.union(set(punctuation))
+
+    essay = essay.lower()
+    words = filter(None, essay.split(" "))
+
+    words = [word for word in words if word not in stopwords_en_withpunct]
+
+    words = [porter.stem(y) for y in words]
+    result = ' '.join(words)
+
+    return result

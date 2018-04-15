@@ -21,8 +21,6 @@ from datetime import datetime
 
 from tqdm import tqdm
 
-from nltk import PorterStemmer
-
 # Reading in data
 
 dtype = {
@@ -52,7 +50,6 @@ sub_path = "F:/Nerdy Stuff/Kaggle submissions/DonorChoose"
 # Creating vars that determine what will be run and what won't
 
 res_rollup = False
-tfidf = True
 stem = False
 
 train = pd.read_csv(os.path.join(data_dir, "data/train.csv"),
@@ -103,7 +100,7 @@ essay_cols = ['project_essay_1', 'project_essay_2', 'project_essay_3',
 
 text_labels = ['teacher_id', 'teacher_prefix', 'school_state',
                'project_grade_category', 'project_subject_categories',
-               'project_subject_subcategories']
+               'project_subject_subcategories', 'description_ttl']
 
 print("Concatenating datasets so I can build the label encoders")
 
@@ -112,38 +109,52 @@ for c in tqdm(text_labels):
     train[c] = train[c].astype(str)
     test[c] = test[c].astype(str)
 
-df_all = pd.concat([train, test], axis=0)
+essay_cols_nlp = ['project_title', 'project_essay',
+                  'project_resource_summary']
 
-print("Doing TFIDF")
-
-essay_cols_nlp = ['project_title', 'project_essay', 'project_resource_summary']
-
-n_features = [400,4000,400]
+n_features = [400,4000,400, 400]
 file_name = '_'.join(str(x) for x in n_features)
 
-if tfidf:
+print("Stemming / NLP cols")
 
-    for c_i, c in tqdm(enumerate(essay_cols_nlp)):
-        tfidf = TfidfVectorizer(max_features=n_features[c_i],
-                                norm='l2',
-                                decode_error='replace')
+if stem:
 
-        tfidf.fit(df_all[c])
-        tfidf_train = np.array(tfidf.transform(train[c]).toarray(), dtype=np.float16)
-        tfidf_test = np.array(tfidf.transform(test[c]).toarray(), dtype=np.float16)
+    for c in tqdm(essay_cols_nlp):
 
-        for i in range(n_features[c_i]):
-            train[c + '_tfidf_' + str(i)] = tfidf_train[:, i]
-            test[c + '_tfidf_' + str(i)] = tfidf_test[:, i]
+        train[c] = train[c].apply(lambda x: fn.remove_stops_punct_stemmer(x))
+        test[c] = test[c].apply(lambda x: fn.remove_stops_punct_stemmer(x))
 
-    print("Successfully outputted")
+        print("Outputting stemmed and stopword removed essays to save time")
+
+        train.to_csv(os.path.join(data_dir, 'data/train_stem.csv'))
+        test.to_csv(os.path.join(data_dir, 'data/test_stem.csv'))
 
 else:
 
-    train = pd.read_csv(os.path.join(data_dir, 'data/train_tfidf_' + file_name + '.csv'),
-                        parse_dates=['project_submitted_datetime'], low_memory=True)
-    test = pd.read_csv(os.path.join(data_dir, 'data/test_tfidf_' + file_name + '.csv'),
+    train= pd.read_csv(os.path.join(data_dir, 'data/train_stem.csv'),
                        parse_dates=['project_submitted_datetime'], low_memory=True)
+    test = pd.read_csv(os.path.join(data_dir, 'data/test_stem.csv'),
+                parse_dates=['project_submitted_datetime'], low_memory=True)
+
+df_all = pd.concat([train, test], axis=0)
+
+essay_cols_nlp = ['project_title', 'project_essay',
+                  'project_resource_summary', 'description_ttl']
+
+print("Doing TFIDF")
+
+for c_i, c in tqdm(enumerate(essay_cols_nlp)):
+    tfidf = TfidfVectorizer(max_features=n_features[c_i],
+                            norm='l2',
+                            decode_error='replace')
+
+    tfidf.fit(df_all[c])
+    tfidf_train = np.array(tfidf.transform(train[c]).toarray(), dtype=np.float16)
+    tfidf_test = np.array(tfidf.transform(test[c]).toarray(), dtype=np.float16)
+
+    for i in range(n_features[c_i]):
+        train[c + '_tfidf_' + str(i)] = tfidf_train[:, i]
+        test[c + '_tfidf_' + str(i)] = tfidf_test[:, i]
 
 print("Dropping TF-IDF cols after extracting information..")
 
@@ -187,7 +198,7 @@ feature_engineering_mapper.fit(df_all)
 print("Transforming train and test sets")
 
 X_train = feature_engineering_mapper.transform(X_train)
-test = feature_engineering_mapper.transform(test)
+X_test = feature_engineering_mapper.transform(X_test)
 
 fold_scores = []
 skf = StratifiedKFold(n_splits=10, random_state=1234)
@@ -214,8 +225,7 @@ lgbm_pipe = Pipeline([
     ('classification', lgbm.LGBMClassifier(**params))
 ])
 
-
-clf = lgbm_pipe
+clf = lgbm.LGBMClassifier(**params)
 
 for i, (train_idx, valid_idx) in enumerate(skf.split(X_train, y_train)):
 

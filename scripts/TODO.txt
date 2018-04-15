@@ -1,3 +1,4 @@
 - See whether OHE for labels helps algo work better
 - Add in a feature that tracks how many successful applications a teacher has had
-- Add in lightGBM + TF-IDF to pipeline
+- See what features are being selected by K best
+- Try out PCA/RFE
