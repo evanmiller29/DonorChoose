@@ -219,12 +219,6 @@ params = {
     'min_gain_to_split': 0,
 }
 
-lgbm_pipe = Pipeline([
-    ('scaler', MinMaxScaler()),
-    ('feature_selection', SelectKBest(chi2, k=1000)),
-    ('classification', lgbm.LGBMClassifier(**params))
-])
-
 clf = lgbm.LGBMClassifier(**params)
 
 for i, (train_idx, valid_idx) in enumerate(skf.split(X_train, y_train)):
