@@ -1,4 +1,6 @@
-- See whether OHE for labels helps algo work better
 - Add in a feature that tracks how many successful applications a teacher has had
-- See what features are being selected by K best
-- Try out PCA/RFE
+- CHECK IF THE RESOURCE INFO IS BEING BROUGHT THROUGH
+- ADD IN 1 + LOG TRANSFORMS FOR VARIABLES
+- ALSO FORMAT THIS SCRIPT BETTER AND MAKE IT IN LINE WITH OTHERS
+
+

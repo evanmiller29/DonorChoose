@@ -8,12 +8,8 @@ import scripts.donorchoose_functions as fn
 
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold
-from sklearn.preprocessing import LabelEncoder, OneHotEncoder, LabelBinarizer
+from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.pipeline import Pipeline
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_selection import SelectKBest, chi2
 
 from sklearn_pandas import DataFrameMapper
 

@@ -53,19 +53,22 @@ def remove_stops_punct_stemmer(essay):
 
     from nltk.corpus import stopwords
     from string import punctuation
-    from nltk.stem import PorterStemmer
+    from nltk.stem import WordNetLemmatizer
 
-    porter = PorterStemmer()
+    wordnet_lemmatizer = WordNetLemmatizer()
 
     stopwords_en = set(stopwords.words('english'))
     stopwords_en_withpunct = stopwords_en.union(set(punctuation))
+    stopwords_en_withpunct.update(['title', 'come'])
 
     essay = essay.lower()
     words = filter(None, essay.split(" "))
 
     words = [word for word in words if word not in stopwords_en_withpunct]
+    words = [w for w in words if not w.isdigit()] #Removing digits
 
-    words = [porter.stem(y) for y in words]
+    words = [wordnet_lemmatizer.lemmatize(w) for w in words]
+
     result = ' '.join(words)
 
     return result

@@ -5,10 +5,8 @@ import os
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import KFold, RepeatedKFold
+from sklearn.model_selection import RepeatedKFold
 from sklearn.preprocessing import LabelEncoder
-
-import scripts.donorchoose_functions as fn
 
 from datetime import datetime
 
@@ -40,15 +38,10 @@ dtype = {
 data_dir = "F:/Nerdy Stuff/Kaggle/DonorsChoose"
 sub_path = "F:/Nerdy Stuff/Kaggle submissions/DonorChoose"
 
-print("Rolling up resource requirements to one line and creating aggregate feats")
-
 train = pd.read_csv(os.path.join(data_dir, 'data/train_stem.csv'),
                     low_memory=True)
 test = pd.read_csv(os.path.join(data_dir, 'data/test_stem.csv'),
                    low_memory=True)
-
-res = pd.read_csv(os.path.join(data_dir, 'data/resource_agg.csv'))
-sample_sub = pd.read_csv(os.path.join("data/sample_submission.csv"))
 
 id_test = test['id'].values
 
@@ -84,12 +77,21 @@ test.drop([
 
 # Recoding as when stopwords are removed some titles have no values
 
-train.loc[train['project_title'].isnull() == True, 'project_title'] = 'Project has no title once stopwords are removed'
-test.loc[test['project_title'].isnull() == True, 'project_title'] = 'Project has no title once stopwords are removed'
+print("Recoding missing values once NLP preprocessing done. Might want to check that")
+
+train.loc[train['project_title'].isnull() == True, 'project_title'] = 'No values once NLP preprocessing is done'
+test.loc[test['project_title'].isnull() == True, 'project_title'] = 'No values once NLP preprocessing is done'
+
+train.loc[train['project_essay'].isnull() == True, 'project_essay'] = 'No values once NLP preprocessing is done'
+test.loc[test['project_essay'].isnull() == True, 'project_essay'] = 'No values once NLP preprocessing is done'
+
+train.loc[train['project_resource_summary'].isnull() == True, 'project_resource_summary'] = 'No values once NLP preprocessing is done'
+test.loc[test['project_resource_summary'].isnull() == True, 'project_resource_summary'] = 'No values once NLP preprocessing is done'
+
+train.loc[train['description_ttl'].isnull() == True, 'description_ttl'] = 'No values once NLP preprocessing is done'
+test.loc[test['description_ttl'].isnull() == True, 'description_ttl'] = 'No values once NLP preprocessing is done'
 
 gc.collect()
-
-print(train.head())
 
 # Preprocess columns with label encoder
 print('Label Encoder...')
@@ -117,13 +119,18 @@ print('Done.')
 print('Preprocessing timestamp...')
 
 def process_timestamp(df):
-    df['year'] = df['project_submitted_datetime'].apply(lambda x: int(x.split('-')[0]))
-    df['month'] = df['project_submitted_datetime'].apply(lambda x: int(x.split('-')[1]))
-    df['date'] = df['project_submitted_datetime'].apply(lambda x: int(x.split(' ')[0].split('-')[2]))
-    df['day_of_week'] = pd.to_datetime(df['project_submitted_datetime']).dt.weekday
-    df['hour'] = df['project_submitted_datetime'].apply(lambda x: int(x.split(' ')[-1].split(':')[0]))
-    df['minute'] = df['project_submitted_datetime'].apply(lambda x: int(x.split(' ')[-1].split(':')[1]))
-    df['project_submitted_datetime'] = pd.to_datetime(df['project_submitted_datetime']).values.astype(np.int64)
+
+    df['project_submitted_datetime'] = pd.to_datetime(df['project_submitted_datetime'])
+
+    df['year'] = df['project_submitted_datetime'].apply(lambda x: x.year)
+    df['month'] = df['project_submitted_datetime'].apply(lambda x: x.month)
+    df['day'] = df['project_submitted_datetime'].apply(lambda x: x.day)
+    df['day_of_week'] = df['project_submitted_datetime'].apply(lambda x: x.dayofweek)
+
+    df['hour'] = df['project_submitted_datetime'].apply(lambda x: x.hour)
+    df['minute'] = df['project_submitted_datetime'].apply(lambda x: x.minute)
+
+    df['project_submitted_datetime'] = df['project_submitted_datetime'].values.astype(np.int64)
 
 process_timestamp(train)
 process_timestamp(test)
@@ -146,6 +153,9 @@ n_features = [
 ]
 
 for c_i, c in tqdm(enumerate(cols)):
+
+    print("TFIDF for %s" % (c))
+
     tfidf = TfidfVectorizer(
         max_features=n_features[c_i],
         norm='l2',
@@ -166,19 +176,15 @@ gc.collect()
 
 # Prepare data
 cols_to_drop = [
-    'Unnamed: 0',
-    'id',
-    'teacher_id',
-    'project_title',
-    'project_essay',
-    'project_resource_summary',
-    'project_is_approved',
-     'description_ttl' # Dropping and checking the score
+        'Unnamed: 0'
+    ,   'id'
+    ,   'teacher_id'
+    ,   'project_title'
+    ,   'project_essay'
+    ,   'project_resource_summary'
+    ,   'project_is_approved'
+    ,   'description_ttl'
 ]
-
-CHECK IF THE RESOURCE INFO IS BEING BROUGHT THROUGH
-ADD IN 1 + LOG TRANSFORMS FOR VARIABLES
-ALSO FORMAT THIS SCRIPT BETTER AND MAKE IT IN LINE WITH OTHERS
 
 X = train.drop(cols_to_drop, axis=1, errors='ignore')
 y = train['project_is_approved']
@@ -201,7 +207,31 @@ kf = RepeatedKFold(
     random_state=0)
 auc_buf = []
 
-for train_index, valid_index in kf.split(X):
+num_rows = 60000
+
+X_train_test = X.iloc[0:num_rows, :]
+y_train_test = y.iloc[0:num_rows]
+
+prob_ests = []
+y_test = []
+
+prb = np.array(prob_ests[0])
+y_tst = np.asarray(y_test[0], np.int32)
+
+prb.dtype
+y_tst.dtype
+
+prb.shape
+y_tst.shape
+
+prb_ser = pd.Series(prb)
+roc_auc_score(np.asarray(y_tst[0:9000], np.int32), prb[0:9000])
+
+import matplotlib.pyplot as plt
+
+pd.Series(prb[0:9000]).dtype
+
+for train_index, valid_index in kf.split(X_train_test):
     print('Fold {}/{}'.format(cnt + 1, n_splits))
     params = {
         'boosting_type': 'gbdt',
@@ -220,22 +250,23 @@ for train_index, valid_index in kf.split(X):
     }
 
     lgb_train = lgb.Dataset(
-        X.loc[train_index],
-        y.loc[train_index],
+        X_train_test.loc[train_index],
+        y_train_test.loc[train_index],
         feature_name=feature_names,
     )
     lgb_train.raw_data = None
 
     lgb_valid = lgb.Dataset(
-        X.loc[valid_index],
-        y.loc[valid_index],
+        X_train_test.loc[valid_index],
+        y_train_test.loc[valid_index],
     )
     lgb_valid.raw_data = None
 
     model = lgb.train(
         params,
         lgb_train,
-        num_boost_round=10000,
+        # num_boost_round=10000,
+        num_boost_round=100,
         valid_sets=[lgb_train, lgb_valid],
         early_stopping_rounds=100,
         verbose_eval=100,
@@ -256,9 +287,19 @@ for train_index, valid_index in kf.split(X):
         del importance, model_fnames, tuples
 
     p = model.predict(X.loc[valid_index], num_iteration=model.best_iteration)
-    auc = roc_auc_score(y.loc[valid_index], p)
 
-    print('{} AUC: {}'.format(cnt, auc))
+    print(type(p))
+    print(p[0:5])
+    print(type(X))
+    print(type(y))
+    print(max(p))
+
+    prob_ests.append(p)
+    y_test.append(y.loc[valid_index])
+    auc = roc_auc_score(y.loc[valid_index], p)
+    auc = round(auc, 4)
+
+    print('{} AUC: {}'.format(str(cnt), str(auc)))
 
     p = model.predict(X_test, num_iteration=model.best_iteration)
     if len(p_buf) == 0:

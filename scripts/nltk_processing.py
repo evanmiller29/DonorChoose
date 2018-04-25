@@ -78,44 +78,16 @@ essay_cols_nlp = ['project_title', 'project_essay',
 
 n_features = [400,4000,400, 400]
 
-def remove_stops_punct_stemmer(essay):
-
-    """
-
-    :param essay: Essay for stemming and removing stop words
-    :return: A cleaned and stemmed essay
-    """
-
-    from nltk.corpus import stopwords
-    from string import punctuation
-    from nltk.stem import WordNetLemmatizer
-
-    wordnet_lemmatizer = WordNetLemmatizer()
-
-    stopwords_en = set(stopwords.words('english'))
-    stopwords_en_withpunct = stopwords_en.union(set(punctuation))
-    stopwords_en_withpunct.update(['title', 'come'])
-
-    essay = essay.lower()
-    words = filter(None, essay.split(" "))
-
-    words = [word for word in words if word not in stopwords_en_withpunct]
-    words = [w for w in words if not w.isdigit()] #Removing digits
-
-    words = [wordnet_lemmatizer.lemmatize(w) for w in words]
-
-    result = ' '.join(words)
-
-    return result
-
 print("Stemming / NLP cols")
 
 for c in tqdm(essay_cols_nlp):
 
-    train[c] = train[c].apply(lambda x: remove_stops_punct_stemmer(x))
-    test[c] = test[c].apply(lambda x: remove_stops_punct_stemmer(x))
+    train[c] = train[c].apply(lambda x: fn.remove_stops_punct_stemmer(x))
+    test[c] = test[c].apply(lambda x: fn.remove_stops_punct_stemmer(x))
 
     print("Outputting stemmed and stopword removed essays to save time")
+
+    print("Null cols = %s" % (train[c].isnull().sum()))
 
 train.to_csv(os.path.join(data_dir, 'data/train_stem.csv'))
 test.to_csv(os.path.join(data_dir, 'data/test_stem.csv'))
